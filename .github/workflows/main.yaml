@@ -18,10 +18,20 @@ jobs:
       - name: Checkout the "hidden" branch
         uses: actions/checkout@v3
       
-      - name: Generate trackers.txt file
+      - name: Generate trackers.txt file (Clash RULE-SET format)
         run: |
           echo "payload:" > anime_trackers.txt
-          curl -sSL ${trackers_anime} | awk -F[/:] '{printf "  - '\''%s'\''\n", $4}' | sort -u >> anime_trackers.txt
+          curl -sSL ${trackers_anime} | while read line; do
+            target=$(echo "$line" | sed "s/^.*:\/\///;s/\/.*$//")
+            if [[ "$target" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "  - IP-CIDR,${target}/32" >> anime_trackers.txt
+            elif [[ "$target" =~ ^AS[0-9]+$ ]]; then
+              num=$(echo "$target" | sed 's/AS//')
+              echo "  - IP-ASN,${num}" >> anime_trackers.txt
+            elif [[ "$target" =~ ^[a-zA-Z0-9.-]+$ ]]; then
+              echo "  - DOMAIN-SUFFIX,${target}" >> anime_trackers.txt
+            fi
+          done
       
       - name: Git push assets to "release" branch
         run: |
