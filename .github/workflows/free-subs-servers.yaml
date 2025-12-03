@@ -1,0 +1,50 @@
+name: Update Subscription
+
+on:
+  workflow_dispatch: # Кнопка "Run" для ручного запуска
+  schedule:
+    - cron: '0 4 * * *' # Авто-запуск каждый день в 4 утра
+
+jobs:
+  convert-and-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download and Run Subconverter
+        run: |
+          # Скачиваем бинарник (Linux 64-bit)
+          wget https://github.com/tindy2013/subconverter/releases/download/v0.9.0/subconverter_linux64.tar.gz
+          tar -zxf subconverter_linux64.tar.gz
+          
+          # Запускаем в фоне (лог в файл для отладки)
+          cd subconverter
+          nohup ./subconverter > subconverter.log 2>&1 &
+          
+          # Ждем пару секунд пока стартанет
+          sleep 5
+
+      - name: Generate Config
+        env:
+          # Сюда кладете ваши ссылки через '|' в настройках репозитория (Settings -> Secrets)
+          # Пример: https://link1.com|https://link2.com
+          SUBS: ${{ secrets.MY_SUBS }}
+        run: |
+          # Кодируем URL (важно для subconverter)
+          ENCODED_URLS=$(python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ['SUBS']))")
+          
+          # Формируем запрос к локальному subconverter
+          # target=clash - для Clash, target=v2ray - для V2Ray и т.д.
+          curl -o subconverter/clash.yaml "http://127.0.0.1:25500/sub?target=clash&url=$ENCODED_URLS&insert=false&config=https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/config/ACL4SSR_Online_Full.ini"
+
+          # Проверяем, что файл не пустой (сохраняем в папку `subconverter`)
+          if [ ! -s subconverter/clash.yaml ]; then echo "Error: Empty config generated"; exit 1; fi
+
+      - name: Commit and Push
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Auto-update subscription config [skip ci]"
+          file_pattern: 'subconverter/clash.yaml' # Какой файл коммитить
+          push_options: '--force' # Опционально, если нужно перезаписывать
+
