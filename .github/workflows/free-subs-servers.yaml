@@ -31,15 +31,44 @@ jobs:
           # Пример: https://link1.com|https://link2.com
           SUBS: ${{ secrets.MY_SUBS }}
         run: |
-          # Кодируем URL (важно для subconverter)
-          ENCODED_URLS=$(python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ['SUBS']))")
-          
-          # Формируем запрос к локальному subconverter
-          # target=clash - для Clash, target=v2ray - для V2Ray и т.д.
-          curl -o subconverter/clash.yaml "http://127.0.0.1:25500/sub?target=clash&url=$ENCODED_URLS&insert=false&config=https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/config/ACL4SSR_Online_Full.ini"
+          # Берём первую ссылку из списка (не печатаем сам секрет)
+          FIRST_URL="${SUBS%%|*}"
+          mkdir -p subconverter
 
-          # Проверяем, что файл не пустой (сохраняем в папку `subconverter`)
-          if [ ! -s subconverter/clash.yaml ]; then echo "Error: Empty config generated"; exit 1; fi
+          # Скачиваем один пример исходника для диагностики
+          curl -sS "$FIRST_URL" -o subconverter/source.txt || true
+          echo "---- source head (first 40 lines) ----"
+          head -n 40 subconverter/source.txt || true
+
+          # Простая детекция формата: если есть vmess/vless/trojan — считаем V2Ray-подпиской
+          if grep -qE 'vmess://|vless://|trojan://' subconverter/source.txt; then
+            TARGET="v2ray"
+          else
+            TARGET="clash"
+          fi
+          echo "Selected target: $TARGET"
+
+          # Кодируем URL(ы) для subconverter
+          ENCODED_URLS=$(python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ['SUBS']))")
+
+          # Ждём пока subconverter поднимется (до ~15s)
+          for i in {1..15}; do
+            if curl -sS http://127.0.0.1:25500/ >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+
+          # Запрос к локальному subconverter, результат сохраняем в папку `subconverter` чтобы совпадало с коммитом
+          curl -sS -o subconverter/clash.yaml "http://127.0.0.1:25500/sub?target=$TARGET&url=$ENCODED_URLS&insert=false&config=https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/config/ACL4SSR_Online_Full.ini" || true
+
+          # Диагностика на случай ошибки
+          if [ ! -s subconverter/clash.yaml ]; then
+            echo "Error: Empty config generated"
+            echo "==== subconverter log (tail) ===="
+            tail -n 200 subconverter/subconverter.log || true
+            echo "==== source sample (head) ===="
+            head -n 200 subconverter/source.txt || true
+            exit 1
+          fi
 
       - name: Commit and Push
         uses: stefanzweifel/git-auto-commit-action@v5
