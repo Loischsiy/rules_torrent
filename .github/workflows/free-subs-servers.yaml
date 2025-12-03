@@ -100,3 +100,15 @@ jobs:
           commit_message: "Auto-update subscription config [skip ci]"
           file_pattern: 'subconverter/clash.yaml' # Какой файл коммитить
           push_options: '--force' # Опционально, если нужно перезаписывать
+
+      - name: Upload debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: subconverter-debug
+          path: |
+            subconverter/source.txt
+            subconverter/response.txt
+            subconverter/subconverter.log
+            subconverter/clash.yaml
+
