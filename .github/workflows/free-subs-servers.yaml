@@ -40,11 +40,13 @@ jobs:
           echo "---- source head (first 40 lines) ----"
           head -n 40 subconverter/source.txt || true
 
-          # Расширённая детекция формата:
-          # - vmess/vless/trojan => v2ray
-          # - ss/ssr или отсутствующие JSON-поля => clash
-          if grep -qE 'vmess://|vless://|trojan://' subconverter/source.txt || \
-             grep -qE '"add"|"ps"|"port"|"protocol"' subconverter/source.txt; then
+          # Детекция формата (сначало явно проверяем ss/ssr):
+          # - если есть ss:// или ssr:// => считаем Shadowsocks -> clash
+          # - иначе ищем vmess/vless/trojan или JSON-поля вида "key": -> v2ray
+          if grep -qE 'ss://|ssr://' subconverter/source.txt; then
+            TARGET="clash"
+          elif grep -qE 'vmess://|vless://|trojan://' subconverter/source.txt || \
+               grep -qE '"(add|ps|port|protocol)"\s*:' subconverter/source.txt; then
             TARGET="v2ray"
           else
             TARGET="clash"
